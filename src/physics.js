@@ -48,3 +48,50 @@ export function solve({ W, th, al }) {
     NB: W * Math.cos(al * DEG) / d      // ramp
   };
 }
+
+// Arrow tips in ball-centred coordinates, y UP.
+//   'flap' pushes up-slope at al above horizontal    -> ( N cos, N sin)
+//   'ramp' normal leans LEFT for a ramp rising right -> (-N sin, N cos)
+export function tipPosition({ N, ang, which }) {
+  const r = ang * DEG;
+  return which === 'ramp'
+    ? { x: -N * Math.sin(r), y: N * Math.cos(r) }
+    : { x:  N * Math.cos(r), y: N * Math.sin(r) };
+}
+
+export function angleFromTip({ x, y, which }) {
+  return which === 'ramp'
+    ? Math.atan2(-x, y) / DEG
+    : Math.atan2(y, x) / DEG;
+}
+
+export function forceMagnitude({ x, y }) {
+  return Math.hypot(x, y);
+}
+
+// Holding W and the OTHER angle, each arrowhead is confined to a straight line
+// through Q = (0, W):
+//   flap:  y + x*cot(th) = W
+//   ramp:  y - x*tan(al) = W
+export function constraintLine({ W, th, al, which }) {
+  const slope = which === 'ramp'
+    ? Math.tan(al * DEG)
+    : -1 / Math.tan(th * DEG);
+  return { slope, intercept: W };
+}
+
+// NA = W sin(th)/cos(th - al) is smallest where cos(th - al) = 1, i.e. al = th:
+// the flap perpendicular to the ramp. There NA = W sin(th) and NB = W cos(th),
+// the textbook decomposition. Geometrically it is the perpendicular foot of the
+// flap's constraint line.
+export function minFlapForce({ W, th }) {
+  return { N: W * Math.sin(th * DEG), al: th };
+}
+
+// Nearest point on the line. Used instead of inverting force -> angle, because
+// that inverse has two branches and produces visible jumps while dragging.
+export function projectOntoLine({ x, y }, { slope, intercept }) {
+  const dx = 1, dy = slope;
+  const t = ((x - 0) * dx + (y - intercept) * dy) / (dx * dx + dy * dy);
+  return { x: t * dx, y: intercept + t * dy };
+}
