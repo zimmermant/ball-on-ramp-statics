@@ -1,5 +1,68 @@
 # Lab Notebook — Ball on a Ramp
 
+## 2026-09-20 (later) — whole-branch review, fix wave, and what it caught
+
+### Summary
+
+Eleven tasks built the app; a whole-branch review then found one Critical defect that all
+eleven task reviews had walked past. Fixed, plus two Important items and a set of minors.
+43 tests pass. `dist/ball_on_ramp_statics.html` is 40,905 bytes and rebuilds byte-identically
+from `src/`.
+
+### The Critical defect, and why it hid
+
+The perpendicular-flap message recomputed `W*cos(th)` for the ramp force and called it
+"exactly" that. It fires within a tolerance of `al === th`, and the two forces behave
+differently there:
+
+- **`N_A` is STATIONARY at `al = th`** — it is a minimum — so blurring by the tolerance cost
+  it about **0.05 N**, invisible.
+- **`N_B` is MONOTONIC there** — it has no interior minimum at all — so the same blur cost it
+  up to **9.2 N, about 4.9%**.
+
+At `W = 900, th = 78.5, al = 77.9` the message said the ramp carries exactly 179 N while the
+free-body diagram, the triangle and the equations all showed 189 N. Dragging essentially
+never lands on `al === th` exactly, so the contradicting case was the common one — in the
+app's headline teaching moment.
+
+**It hid because the test could not fail.** It evaluated only `al === th`, the single point
+where recomputing and reading the live force coincide by construction. This is the same
+pattern that produced three other defects on this branch, and it is worth stating as a rule:
+*a test that samples only the point where two computations agree cannot tell you they are
+different computations.*
+
+The fix quotes `Math.round(s.NA)` and `Math.round(s.NB)` so the sentence can never disagree
+with the panels, tightens the tolerance from 0.6 to 0.2 degrees so the `W sin th` / `W cos th`
+framing stays honest, and adds a sweep across the whole band that fails against the old
+recompute with a 3.1 N gap.
+
+### The other two
+
+- **`toMaths` was unguarded.** `test/fbd.test.js` round-tripped `px` against its own *copy* of
+  the inverse, so dropping the y-flip in the real one would have broken every drag with the
+  suite green. I had parked this citing the top-level name budget; the reviewer pointed out
+  that `build.js` forbids *duplicate* names and `toMaths` is unique, so the budget was never
+  the obstacle. It is now exported and pinned against the real function.
+- **The build's duplicate detector missed every declarator after the first**, and the codebase
+  already tripped it: `export const VB = {...}, PAD = 0.12;` left `PAD` unregistered. Fixed,
+  and `scanForDuplicates` now has tests — including one asserting an *indented* `const` is NOT
+  flagged, which is what lets `triangle.js`'s inner `px` legally shadow `fbd.js`'s.
+
+### Open questions / next steps
+
+1. **Todd's own browser confirmation** of `dist/ball_on_ramp_statics.html` over `file://` is the
+   last gate, and it is the only evidence covering the renderer layer — no test instantiates
+   `createFbd` or `createTriangle`, deliberately.
+2. The new comma-scanner in `build.js` has three dormant gaps: a regex literal or a block
+   comment containing a comma on a column-0 declaration would false-positive; a multi-LINE
+   multi-declarator statement would false-negative. None is triggered today. A fully general
+   guard needs a tokeniser rather than another special case.
+3. Deliberately not tested, because closing it needs a hand-rolled SVG shim whose own
+   correctness nothing verifies: the drag routing in `createFbd`, and that `triangle.js` draws
+   the construction its test pins mathematically.
+
+---
+
 ## 2026-09-20 — Task 11: build, docs, and ship
 
 ### Summary
