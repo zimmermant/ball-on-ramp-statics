@@ -2,10 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FBD_ORIGIN, S, px, exitParam } from '../src/fbd.js';
 import { solve, tipPosition, constraintLine, projectOntoLine,
-         angleFromTip, flapWindow } from '../src/physics.js';
+         angleFromTip } from '../src/physics.js';
 
 const toMaths = p => ({ x: (p.x - FBD_ORIGIN.x) / S, y: (FBD_ORIGIN.y - p.y) / S });
-const onLine = ({ x, y }, { slope, intercept }) => y - (slope * x + intercept);
 
 test('px and toMaths are exact inverses', () => {
   for (const p of [{ x: 0, y: 0 }, { x: 250, y: -400 }, { x: -1200, y: 900 }]) {
@@ -40,6 +39,10 @@ test('an off-scale cut point is NOT on the constraint line', () => {
   const cut = { x: FBD_ORIGIN.x + (end.x - FBD_ORIGIN.x) * t,
                 y: FBD_ORIGIN.y + (end.y - FBD_ORIGIN.y) * t };
   const line = constraintLine({ W, th, al, which: 'flap' });
-  assert.ok(Math.abs(onLine(toMaths(cut), line)) > 1,
-    'the cut point would have to be off the line for the grab offset to matter');
+  // Projecting the RAW cut point (what a drag without the grab offset would do)
+  // lands at a visibly different angle -- this is the 13-22 degree snap the grab
+  // offset prevents, and the reason pointerdown records it.
+  const naive = angleFromTip({ ...projectOntoLine(toMaths(cut), line), which: 'flap' });
+  assert.ok(Math.abs(naive - al) > 5,
+    `projecting the raw cut point should snap the angle, but moved only ${(naive - al).toFixed(2)} deg`);
 });
