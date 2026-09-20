@@ -449,6 +449,64 @@ function createScene(svg, { setRamp, setFlap }) {
     text(drawRoot, o.x, o.y + 5, `${Math.round(s.W)} N`,
          { anchor: 'middle', fill: INK, weight: 600 });
 
+    // Flap tilt (phi), measured from vertical -- but centred partway UP THE
+    // PLANK (0.6 of the way to the mount) rather than at the flap contact
+    // point. The contact point sits ON the ball's surface, and the bisector
+    // between "straight up" and the flap's own direction points back across
+    // the ball for al >= 0 (confirmed by measurement: the label's getBBox
+    // overlapped the ball's disc at al = 0 and al = +40, and the weight label
+    // too at al = +40). The plank is straight, so the angle it makes with
+    // vertical is phi wherever it is measured along its length. 0.6 of the
+    // way up (90 px, since FLAP_UP = 150) it has already left the ball
+    // tangentially, so that point is sqrt(70^2 + 90^2) ~= 114 px from the
+    // ball's centre -- clear of the 70 px disc with room for the arc -- and
+    // still ~22 px short of the mount at the top.
+    const phiAt = { x: ca.x + 0.6 * FLAP_UP * fd.x,
+                    y: ca.y + 0.6 * FLAP_UP * fd.y };
+    const pr = 24;
+    const labelR = pr + 14;
+    el('line', { x1: phiAt.x, y1: phiAt.y, x2: phiAt.x, y2: phiAt.y - labelR,
+                 stroke: '#c9ccd2', 'stroke-width': 1, 'stroke-dasharray': '5 4' }, drawRoot);
+    // SVG y points DOWN, so atan2(y, x) increases CLOCKWISE on screen; working
+    // through flapDir's angle relative to straight up shows the plank sits at
+    // an angular offset of -al from vertical -- i.e. al > 0 leans counter-
+    // clockwise (sweep the short way by decreasing angle, flag 0) and al < 0
+    // leans clockwise (flag 1). |al| stays well under 180 across the whole
+    // flap window, so the short way is always a minor arc (large-arc-flag 0).
+    const sweep = s.al < 0 ? 1 : 0;
+    el('path', {
+      d: `M ${phiAt.x} ${phiAt.y - pr} A ${pr} ${pr} 0 0 ${sweep} ` +
+         `${phiAt.x + pr * fd.x} ${phiAt.y + pr * fd.y}`,
+      fill: 'none', stroke: C_A, 'stroke-width': 1.5, opacity: .85
+    }, drawRoot);
+    // label sits OUTBOARD -- straight away from the ball -- rather than on
+    // the bisector between vertical and the plank. The bisector points
+    // roughly UP THE PLANK, which is exactly where the mount and the flap's
+    // own drag handle live at the plank's far end: measurement showed the
+    // bisector-placed label sitting exactly on the handle at al = +55 and
+    // grazing it at al = -40.
+    //
+    // "Outboard" here means the radius direction AT THE CONTACT POINT --
+    // (-cos al, sin al), the same unit vector flapContact's own offset from
+    // ballCentre reduces to -- NOT the direction from the ball's centre to
+    // phiAt. Those two are different: phiAt is 90 px along the TANGENT from
+    // the contact point, so ball-centre -> phiAt is the sum of a 70 px
+    // radial component and a 90 px tangential one, and at large |al| that
+    // mix rotates far enough toward the plank's own direction to send the
+    // label right back toward the mount/handle (measured: distance to the
+    // handle centre fell under the 20 px floor at al = -50, -40, +75, +85
+    // when tried). The pure radial direction, by contrast, is exactly
+    // PERPENDICULAR to the plank at every al, so moving along it changes the
+    // label's distance from the mount/handle by a constant geometric offset
+    // rather than sliding it toward them: sqrt(30^2 + 60^2) = 67 px, by the
+    // same right-triangle reasoning that puts phiAt at a constant 114 px
+    // from the ball's centre, regardless of al.
+    const rad = { x: -Math.cos(s.al * DEG), y: Math.sin(s.al * DEG) };
+    const lx = phiAt.x + 30 * rad.x;
+    const ly = phiAt.y + 30 * rad.y + 4;
+    nudgeInside(text(drawRoot, lx, ly,
+         `φ = ${s.al.toFixed(1)}°`, { fill: C_A, weight: 600, anchor: rad.x < 0 ? 'end' : 'start' }));
+
     // contact markers, lettered to match the reference figure
     el('circle', { cx: ca.x, cy: ca.y, r: 4.5, fill: C_A }, drawRoot);
     nudgeInside(text(drawRoot, ca.x - 13, ca.y - 12, 'A',
@@ -872,9 +930,9 @@ function createTriangle(svg) {
 
     const [a, b, c] = pts.map(p => px(p.x, p.y));
     const sides = [
-      { from: a, to: b, color: C1, mk: 't1', label: `N_A ${Math.round(s.NA)}` },
-      { from: b, to: c, color: C2, mk: 't2', label: `N_B ${Math.round(s.NB)}` },
-      { from: c, to: a, color: CW, mk: 'w',  label: `W ${Math.round(s.W)}` }
+      { from: a, to: b, color: C1, mk: 't1', label: `N_A = ${Math.round(s.NA)} N` },
+      { from: b, to: c, color: C2, mk: 't2', label: `N_B = ${Math.round(s.NB)} N` },
+      { from: c, to: a, color: CW, mk: 'w',  label: `W = ${Math.round(s.W)} N` }
     ];
 
     // A label positioned by a fixed outward push can still land past the viewBox edge

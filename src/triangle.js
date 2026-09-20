@@ -32,9 +32,9 @@ export function createTriangle(svg) {
 
     const [a, b, c] = pts.map(p => px(p.x, p.y));
     const sides = [
-      { from: a, to: b, color: C1, mk: 't1', label: `N_A ${Math.round(s.NA)}` },
-      { from: b, to: c, color: C2, mk: 't2', label: `N_B ${Math.round(s.NB)}` },
-      { from: c, to: a, color: CW, mk: 'w',  label: `W ${Math.round(s.W)}` }
+      { from: a, to: b, color: C1, mk: 't1', label: `N_A = ${Math.round(s.NA)} N` },
+      { from: b, to: c, color: C2, mk: 't2', label: `N_B = ${Math.round(s.NB)} N` },
+      { from: c, to: a, color: CW, mk: 'w',  label: `W = ${Math.round(s.W)} N` }
     ];
 
     // A label positioned by a fixed outward push can still land past the viewBox edge
