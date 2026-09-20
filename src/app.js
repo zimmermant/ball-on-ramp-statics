@@ -2,6 +2,7 @@ import { createState } from './state.js';
 import { createScene } from './scene.js';
 import { createFbd } from './fbd.js';
 import { createTriangle } from './triangle.js';
+import { createEquations } from './equations.js';
 
 const state = createState();
 
@@ -27,6 +28,7 @@ panels.push(createFbd(els.fbd, {
   setWeight: n => state.setWeight(n)
 }));
 panels.push(createTriangle(els.triangle));
+panels.push(createEquations(els.equations));
 
 function renderAll(s) {
   for (const p of panels) p.render(s);
