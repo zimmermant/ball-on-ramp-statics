@@ -167,7 +167,13 @@ export function createScene(svg, { setRamp, setFlap }) {
       return Math.atan2(PIVOT.y - p.y, p.x - PIVOT.x) / DEG;
     }
     const o = ballCentre(latest.th);
-    return Math.atan2(o.y - p.y, p.x - o.x) / DEG - FLAP_HANDLE_OFF;
+    const raw = Math.atan2(o.y - p.y, p.x - o.x) / DEG;   // (-180, 180]
+    // The flap window needs psi up to al + 115 = 200 degrees, past atan2's cut.
+    // Pick the representative of `raw` nearest the current angle so a drag that
+    // crosses 180 continues smoothly instead of wrapping to the window minimum.
+    const cur = latest.al + FLAP_HANDLE_OFF;
+    const psi = raw + 360 * Math.round((cur - raw) / 360);
+    return psi - FLAP_HANDLE_OFF;
   }
 
   svg.addEventListener('pointerdown', e => {
