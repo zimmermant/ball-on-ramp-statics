@@ -16,8 +16,8 @@ export const FLAP_SPAN = 80;          // width of the flap's window, below FLAP_
 export const WEIGHT_MIN = 100;
 export const WEIGHT_MAX = 900;
 
-// Coerces, because DOM inputs hand us strings and the flap window does
-// arithmetic on its argument -- a string would silently produce garbage.
+// Coerces its own parameter because it does arithmetic -- a non-numeric or
+// non-finite input would silently produce NaN, and clampTo cannot clamp against NaN.
 export function clampTo(v, lo, hi) {
   const n = Number(v);
   if (!Number.isFinite(n)) return lo;
@@ -30,9 +30,10 @@ export function clampWeight(n) { return clampTo(n, WEIGHT_MIN, WEIGHT_MAX); }
 // The flap's usable window SLIDES with the ramp angle. Equilibrium needs
 // cos(th - al) > 0 (the flap must lean into the slope enough to grip) and
 // cos(al) > 0 (the ball must still press on the ramp), i.e. al in (th-90, 90).
-// We keep a margin inside both ends.
+// We keep a margin inside both ends. Coerce the ramp angle before arithmetic.
 export function flapWindow(th) {
-  return { min: th - FLAP_SPAN, max: FLAP_MAX };
+  const t = clampRamp(th);
+  return { min: t - FLAP_SPAN, max: FLAP_MAX };
 }
 
 export function clampFlap(al, th) {

@@ -47,6 +47,11 @@ test('the flap window slides with the ramp angle', () => {
   // Steepening the ramp can strand a flap angle that was legal a moment ago.
   assert.equal(clampFlap(-40, 5), -40);
   assert.equal(clampFlap(-40, 85), 5);
+  // Upper bound is enforced.
+  assert.equal(clampFlap(120, 30), 85);
+  // flapWindow coerces its ramp argument; clampFlap respects both bounds.
+  assert.deepEqual(flapWindow('abc'), { min: -75, max: 85 });
+  assert.equal(clampFlap(-300, NaN), -75);
 });
 
 test('clamping lands exactly on the boundary and survives junk', () => {
