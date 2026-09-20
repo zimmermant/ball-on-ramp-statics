@@ -15,7 +15,10 @@ const els = {
 
 // Each panel is { render(s) }. They are pushed in by later tasks.
 const panels = [];
-panels.push(createScene(els.scene, {}));
+panels.push(createScene(els.scene, {
+  setRamp: deg => state.setRampAngle(deg),
+  setFlap: deg => state.setFlapAngle(deg)
+}));
 
 function renderAll(s) {
   for (const p of panels) p.render(s);

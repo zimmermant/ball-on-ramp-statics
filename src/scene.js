@@ -1,4 +1,4 @@
-import { el, clear, text, COLORS } from './svg.js';
+import { el, clear, text, COLORS, clientToSvg } from './svg.js';
 import { DEG, RAMP_MIN, RAMP_MAX } from './physics.js';
 
 // All geometry below is SVG space: y points DOWN. Every maths-space y is
@@ -42,7 +42,7 @@ export function flapHandle(th, al) {
   return { x: o.x + FLAP_HANDLE_R * Math.cos(psi), y: o.y - FLAP_HANDLE_R * Math.sin(psi) };
 }
 
-export function createScene(svg, handlers = {}) {
+export function createScene(svg, { setRamp, setFlap }) {
   const C_A = COLORS.t1, C_B = COLORS.t2, INK = COLORS.ink;
   const drawRoot = el('g', {}, svg);
   const handleRoot = el('g', {}, svg);
@@ -157,5 +157,60 @@ export function createScene(svg, handlers = {}) {
     }
   }
 
-  return { render };
+  let dragging = null, dragPointerId = null;
+  let latest = null;
+  const origRender = render;
+  function renderTracking(s) { latest = s; origRender(s); }
+
+  function angleFor(key, p) {
+    if (key === 'ramp') {
+      return Math.atan2(PIVOT.y - p.y, p.x - PIVOT.x) / DEG;
+    }
+    const o = ballCentre(latest.th);
+    return Math.atan2(o.y - p.y, p.x - o.x) / DEG - FLAP_HANDLE_OFF;
+  }
+
+  svg.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;                 // right/middle click must not drag
+    const g = e.target.closest('[data-scene]');
+    if (!g) return;
+    dragging = g.getAttribute('data-scene');
+    dragPointerId = e.pointerId;
+    g.focus();
+    // A throw here would leave the drag live but uncaptured, so a pointerup
+    // outside the svg would never end it.
+    try { svg.setPointerCapture(e.pointerId); } catch {}
+    e.preventDefault();
+  });
+
+  svg.addEventListener('pointermove', e => {
+    if (!dragging || !latest || e.pointerId !== dragPointerId) return;
+    const deg = angleFor(dragging, clientToSvg(svg, e.clientX, e.clientY));
+    if (dragging === 'ramp') setRamp(deg); else setFlap(deg);
+  });
+
+  function endDrag(e) {
+    if (!dragging || e.pointerId !== dragPointerId) return;
+    if (svg.hasPointerCapture(e.pointerId)) svg.releasePointerCapture(e.pointerId);
+    dragging = null;
+    dragPointerId = null;
+  }
+  svg.addEventListener('pointerup', endDrag);
+  svg.addEventListener('pointercancel', endDrag);
+
+  handleRoot.addEventListener('keydown', e => {
+    const g = e.target.closest('[data-scene]');
+    if (!g) return;
+    const step = e.shiftKey ? 0.1 : 1;
+    let delta = 0;
+    if (e.key === 'ArrowUp' || e.key === 'ArrowRight') delta = step;
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') delta = -step;
+    else return;
+    e.preventDefault();
+    const now = Number(g.getAttribute('aria-valuenow'));
+    if (g.getAttribute('data-scene') === 'ramp') setRamp(now + delta);
+    else setFlap(now + delta);
+  });
+
+  return { render: renderTracking };
 }
