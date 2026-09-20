@@ -154,8 +154,8 @@ test('projection returns a point that is ON the line', () => {
 });
 
 test('a tip round-trips back to its angle and magnitude', () => {
-  const { NA, NB } = solve({ W: 500, th: 30, al: 0 });
-  for (const [N, ang, which] of [[NA, 0, 'flap'], [NB, 30, 'ramp']]) {
+  const { NA, NB } = solve({ W: 500, th: 30, al: 20 });
+  for (const [N, ang, which] of [[NA, 20, 'flap'], [NB, 30, 'ramp']]) {
     const p = tipPosition({ N, ang, which });
     assert.ok(Math.abs(angleFromTip({ ...p, which }) - ang) < 1e-9, `angle ${which}`);
     assert.ok(Math.abs(forceMagnitude(p) - N) < 1e-9, `magnitude ${which}`);
