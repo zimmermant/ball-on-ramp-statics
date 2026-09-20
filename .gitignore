@@ -1,0 +1,15 @@
+# Scratch and OS noise
+.DS_Store
+*.tmp
+*.swp
+node_modules/
+.superpowers/
+
+# No secrets belong in this repo, but be explicit
+.env
+.env.*
+*credential*
+*secret*
+*token*
+*.pem
+*.key
