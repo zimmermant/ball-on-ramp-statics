@@ -1,5 +1,6 @@
 import { createState } from './state.js';
 import { createScene } from './scene.js';
+import { createFbd } from './fbd.js';
 
 const state = createState();
 
@@ -19,6 +20,7 @@ panels.push(createScene(els.scene, {
   setRamp: deg => state.setRampAngle(deg),
   setFlap: deg => state.setFlapAngle(deg)
 }));
+panels.push(createFbd(els.fbd, {}));
 
 function renderAll(s) {
   for (const p of panels) p.render(s);
