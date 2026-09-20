@@ -3,8 +3,8 @@ import { DEG, RAMP_MIN, RAMP_MAX } from './physics.js';
 
 // All geometry below is SVG space: y points DOWN. Every maths-space y is
 // negated on the way in, once, at the point of use.
-export const PIVOT = { x: 190, y: 520 };   // the ramp hinges here
-export const RAMP_LEN = 430;
+export const PIVOT = { x: 235, y: 520 };   // the ramp hinges here
+export const RAMP_LEN = 405;
 export const BALL_R = 70;                  // FIXED: it sets both contact points
 export const CONTACT_D = 250;              // ball contact, measured along the ramp
 export const FLAP_UP = 150;
@@ -47,6 +47,25 @@ export function createScene(svg, handlers = {}) {
   const drawRoot = el('g', {}, svg);
   const handleRoot = el('g', {}, svg);
 
+  // Shifts a text node back inside the viewBox if its rendered extent (glyphs,
+  // not just its anchor point) would otherwise poke out -- e.g. a large force
+  // number under text-anchor="end" near the left edge. Nudging keeps the value
+  // legible; a clipPath would silently cut it off instead. Only works once the
+  // node is in the document, which text() guarantees by appending before return.
+  function nudgeInside(node) {
+    const M = 4, VW = 660, VH = 600;
+    const b = node.getBBox();
+    let dx = 0, dy = 0;
+    if (b.x < M) dx = M - b.x;
+    else if (b.x + b.width > VW - M) dx = (VW - M) - (b.x + b.width);
+    if (b.y < M) dy = M - b.y;
+    else if (b.y + b.height > VH - M) dy = (VH - M) - (b.y + b.height);
+    if (dx || dy) {
+      node.setAttribute('x', Number(node.getAttribute('x')) + dx);
+      node.setAttribute('y', Number(node.getAttribute('y')) + dy);
+    }
+  }
+
   const handles = {};
   for (const [key, color] of [['ramp', INK], ['flap', C_A]]) {
     const g = el('g', {
@@ -82,10 +101,10 @@ export function createScene(svg, handlers = {}) {
          `${PIVOT.x + ar * Math.cos(s.th * DEG)} ${PIVOT.y - ar * Math.sin(s.th * DEG)}`,
       fill: 'none', stroke: INK, 'stroke-width': 1.5, opacity: .8
     }, drawRoot);
-    text(drawRoot,
+    nudgeInside(text(drawRoot,
       PIVOT.x + (ar + 18) * Math.cos(s.th / 2 * DEG),
       PIVOT.y - (ar + 18) * Math.sin(s.th / 2 * DEG) + 4,
-      `θ = ${s.th.toFixed(1)}°`, { fill: INK, weight: 600 });
+      `θ = ${s.th.toFixed(1)}°`, { fill: INK, weight: 600 }));
 
     // the flap: a plank tangent to the ball, mount at its top end
     const top = { x: ca.x + FLAP_UP * fd.x,   y: ca.y + FLAP_UP * fd.y };
@@ -106,15 +125,15 @@ export function createScene(svg, handlers = {}) {
 
     // contact markers, lettered to match the reference figure
     el('circle', { cx: ca.x, cy: ca.y, r: 4.5, fill: C_A }, drawRoot);
-    text(drawRoot, ca.x - 13, ca.y - 12, 'A',
-         { fill: C_A, weight: 700, anchor: 'end', size: 16 });
+    nudgeInside(text(drawRoot, ca.x - 13, ca.y - 12, 'A',
+         { fill: C_A, weight: 700, anchor: 'end', size: 16 }));
     el('circle', { cx: cb.x, cy: cb.y, r: 4.5, fill: C_B }, drawRoot);
-    text(drawRoot, cb.x + 13, cb.y + 22, 'B', { fill: C_B, weight: 700, size: 16 });
+    nudgeInside(text(drawRoot, cb.x + 13, cb.y + 22, 'B', { fill: C_B, weight: 700, size: 16 }));
 
-    text(drawRoot, ca.x - 15, ca.y + 16, `N_A = ${Math.round(s.NA)} N`,
-         { fill: C_A, weight: 600, anchor: 'end' });
-    text(drawRoot, cb.x + 13, cb.y + 44, `N_B = ${Math.round(s.NB)} N`,
-         { fill: C_B, weight: 600 });
+    nudgeInside(text(drawRoot, ca.x - 15, ca.y + 16, `N_A = ${Math.round(s.NA)} N`,
+         { fill: C_A, weight: 600, anchor: 'end' }));
+    nudgeInside(text(drawRoot, cb.x + 13, cb.y + 44, `N_B = ${Math.round(s.NB)} N`,
+         { fill: C_B, weight: 600 }));
 
     // handle positions and ARIA, updated in place so focus survives a render
     const pos  = { ramp: end, flap: flapHandle(s.th, s.al) };
