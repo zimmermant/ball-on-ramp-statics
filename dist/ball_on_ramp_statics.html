@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A ball on a ramp</title>
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 16px;
+  background: #f7f7f8;
+  color: #111827;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+h1 { font-size: 20px; margin: 0 0 4px; }
+.lede { margin: 0 0 16px; color: #555b66; font-size: 14px; }
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  max-width: 1400px;
+}
+
+.panel {
+  background: #fff;
+  border: 1px solid #e3e5e9;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.panel > h2 {
+  margin: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: #6b7280;
+  background: #fafafb;
+  border-bottom: 1px solid #eceef1;
+}
+
+.panel svg { display: block; width: 100%; height: auto; }
+
+.panel--short svg { max-height: 300px; }
+
+#equations {
+  padding: 14px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 14px;
+  line-height: 2;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 14px;
+  flex-wrap: wrap;
+}
+.controls label { font-size: 14px; font-weight: 600; }
+.controls input[type=range] { width: 260px; }
+.controls input[type=number] { width: 90px; padding: 4px 6px; font-size: 14px; }
+
+#messages { margin: 14px 0 0; min-height: 22px; font-size: 14px; color: #8a5a20; }
+#messages:empty { display: none; }
+
+.note { margin-top: 14px; font-size: 12px; color: #6b7280; max-width: 1400px; }
+
+/* Drag affordances: every handle must visibly respond. */
+.handle { cursor: grab; }
+.handle:hover  circle, .handle:hover  .hit { filter: brightness(1.15); }
+.handle:active { cursor: grabbing; }
+.handle:focus  { outline: none; }
+.handle:focus-visible circle { stroke: #111827; stroke-width: 2.5; }
+
+@media (max-width: 900px) {
+  .grid { grid-template-columns: 1fr; }
+}
+
+</style>
+</head>
+<body>
+<h1>A ball on a ramp</h1>
+<p class="lede">Drag the top of the ramp to change its angle, or the flap to change where it presses on the ball. The contact forces are whatever equilibrium requires.</p>
+
+<div class="controls">
+  <label for="w-range">Ball weight</label>
+  <input type="range" id="w-range" min="100" max="900" step="5" value="500">
+  <input type="number" id="w-number" min="100" max="900" step="5" value="500">
+  <span>N</span>
+</div>
+
+<div class="grid">
+  <section class="panel"><h2>The situation</h2><svg id="scene-svg" viewBox="0 0 660 600"></svg></section>
+  <section class="panel"><h2>Free-body diagram of the ball</h2><svg id="fbd-svg" viewBox="0 0 660 600"><defs><clipPath id="fbd-clip"><rect x="6" y="6" width="648" height="588"/></clipPath></defs></svg></section>
+  <section class="panel panel--short"><h2>Force triangle</h2><svg id="triangle-svg" viewBox="0 0 480 380"></svg></section>
+  <section class="panel panel--short"><h2>Equilibrium</h2><div id="equations"></div></section>
+</div>
+
+<p id="messages"></p>
+
+<p class="note">The flap&rsquo;s usable range depends on the ramp angle. It has to lean into the slope enough to grip, and not so far that the ball would lift off the ramp &mdash; so the window of allowed flap angles slides as you change the ramp. That is why steepening the ramp can rotate the flap.</p>
+
+<script>
+(function () {
+"use strict";
+// ===== physics.js =====
+// Statics of a ball resting on a ramp, held by a tangent flap.
+//
+// The flap is tangent to the ball, so its normal force acts along a radius and
+// passes through the centre. The ramp's normal does too, and the weight acts at
+// the centre -- so all three forces are CONCURRENT at the centre and this is a
+// point-particle equilibrium.
+//
+// No DOM. Degrees in, degrees out; radians live only inside this file.
+
+const DEG = Math.PI / 180;
+
+const RAMP_MIN = 5;
+const RAMP_MAX = 85;
+const FLAP_MAX = 85;
+const FLAP_SPAN = 80;          // width of the flap's window, below FLAP_MAX
+const WEIGHT_MIN = 100;
+const WEIGHT_MAX = 900;
+
+// Coerces its own parameter because it does arithmetic -- a non-numeric or
+// non-finite input would silently produce NaN, and clampTo cannot clamp against NaN.
+function clampTo(v, lo, hi) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return lo;
+  return n < lo ? lo : n > hi ? hi : n;
+}
+
+function clampRamp(deg) { return clampTo(deg, RAMP_MIN, RAMP_MAX); }
+function clampWeight(n) { return clampTo(n, WEIGHT_MIN, WEIGHT_MAX); }
+
+// The flap's usable window SLIDES with the ramp angle. Equilibrium needs
+// cos(th - al) > 0 (the flap must lean into the slope enough to grip) and
+// cos(al) > 0 (the ball must still press on the ramp), i.e. al in (th-90, 90).
+// We keep a margin inside both ends. Coerce the ramp angle before arithmetic.
+function flapWindow(th) {
+  const t = clampRamp(th);
+  return { min: t - FLAP_SPAN, max: FLAP_MAX };
+}
+
+function clampFlap(al, th) {
+  const w = flapWindow(th);
+  return clampTo(al, w.min, w.max);
+}
+
+function solve({ W, th, al }) {
+  const d = Math.cos((th - al) * DEG);
+  return {
+    NA: W * Math.sin(th * DEG) / d,     // flap
+    NB: W * Math.cos(al * DEG) / d      // ramp
+  };
+}
+
+// Arrow tips in ball-centred coordinates, y UP.
+//   'flap' pushes up-slope at al above horizontal    -> ( N cos, N sin)
+//   'ramp' normal leans LEFT for a ramp rising right -> (-N sin, N cos)
+function tipPosition({ N, ang, which }) {
+  const r = ang * DEG;
+  return which === 'ramp'
+    ? { x: -N * Math.sin(r), y: N * Math.cos(r) }
+    : { x:  N * Math.cos(r), y: N * Math.sin(r) };
+}
+
+function angleFromTip({ x, y, which }) {
+  return which === 'ramp'
+    ? Math.atan2(-x, y) / DEG
+    : Math.atan2(y, x) / DEG;
+}
+
+function forceMagnitude({ x, y }) {
+  return Math.hypot(x, y);
+}
+
+// Holding W and the OTHER angle, each arrowhead is confined to a straight line
+// through Q = (0, W):
+//   flap:  y + x*cot(th) = W
+//   ramp:  y - x*tan(al) = W
+function constraintLine({ W, th, al, which }) {
+  const slope = which === 'ramp'
+    ? Math.tan(al * DEG)
+    : -1 / Math.tan(th * DEG);
+  return { slope, intercept: W };
+}
+
+// NA = W sin(th)/cos(th - al) is smallest where cos(th - al) = 1, i.e. al = th:
+// the flap perpendicular to the ramp. There NA = W sin(th) and NB = W cos(th),
+// the textbook decomposition. Geometrically it is the perpendicular foot of the
+// flap's constraint line.
+function minFlapForce({ W, th }) {
+  return { N: W * Math.sin(th * DEG), al: th };
+}
+
+// Nearest point on the line. Used instead of inverting force -> angle, because
+// that inverse has two branches and produces visible jumps while dragging.
+function projectOntoLine({ x, y }, { slope, intercept }) {
+  const dx = 1, dy = slope;
+  const t = ((x - 0) * dx + (y - intercept) * dy) / (dx * dx + dy * dy);
+  return { x: t * dx, y: intercept + t * dy };
+}
+
+// ===== svg.js =====
+const NS = 'http://www.w3.org/2000/svg';
+
+// One palette for the whole app. It lives here rather than in each renderer
+// because build.js concatenates every module into a single scope, so a
+// top-level `const C1` in three files would collide and fail the build.
+const COLORS = {
+  t1: '#e06c3a',   // flap force N_A
+  t2: '#3a86c8',   // ramp force N_B
+  w:  '#6b7280',   // ball weight W
+  ink: '#111827'   // ball, ramp and structure
+};
+
+function el(name, attrs = {}, parent = null) {
+  const node = document.createElementNS(NS, name);
+  for (const k in attrs) {
+    const v = attrs[k];
+    if (v !== null && v !== undefined) node.setAttribute(k, String(v));
+  }
+  if (parent) parent.appendChild(node);
+  return node;
+}
+
+function clear(node) {
+  while (node.firstChild) node.removeChild(node.firstChild);
+}
+
+// Text with a background-coloured halo so labels stay readable where they cross lines.
+function text(parent, x, y, str, opts = {}) {
+  const node = el('text', {
+    x, y,
+    'font-size': opts.size || 13,
+    'font-family': 'system-ui, -apple-system, sans-serif',
+    fill: opts.fill || COLORS.ink,
+    'text-anchor': opts.anchor || 'start',
+    'font-weight': opts.weight || 400,
+    'paint-order': 'stroke',
+    stroke: '#ffffff',
+    'stroke-width': opts.halo === false ? 0 : 3.5,
+    'stroke-linejoin': 'round'
+  }, parent);
+  node.textContent = str;
+  return node;
+}
+
+// Pointer position in viewBox units. Handles CSS scaling and page scroll correctly,
+// which naive clientX - rect.left arithmetic does not.
+function clientToSvg(svg, clientX, clientY) {
+  const pt = svg.createSVGPoint();
+  pt.x = clientX;
+  pt.y = clientY;
+  return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+
+// ===== state.js =====
+
+
+// The ONLY stored state is these three numbers. NA and NB are derived on every
+// read, which is what makes it structurally impossible for the panels to drift
+// out of step -- there is one copy of the truth.
+function createState() {
+  let W = 500, th = 30, al = 0;
+  let subscribers = [];
+
+  function getState() {
+    const { NA, NB } = solve({ W, th, al });
+    return { W, th, al, NA, NB };
+  }
+
+  function notify() {
+    const snapshot = getState();
+    for (const fn of subscribers.slice()) fn(snapshot);
+  }
+
+  // The ramp always moves where it is dragged. If that strands the flap outside
+  // its new window the flap is re-clamped and follows -- one notification for
+  // both changes, so no subscriber ever sees the intermediate invalid pair.
+  function setRampAngle(deg) {
+    const nextTh = clampRamp(deg);
+    const nextAl = clampFlap(al, nextTh);
+    if (nextTh === th && nextAl === al) return;
+    th = nextTh;
+    al = nextAl;
+    notify();
+  }
+
+  function setFlapAngle(deg) {
+    const v = clampFlap(deg, th);
+    if (v === al) return;
+    al = v;
+    notify();
+  }
+
+  function setWeight(n) {
+    const v = clampWeight(n);
+    if (v === W) return;
+    W = v;
+    notify();
+  }
+
+  function subscribe(fn) {
+    subscribers.push(fn);
+    return () => { subscribers = subscribers.filter(f => f !== fn); };
+  }
+
+  return { getState, setRampAngle, setFlapAngle, setWeight, subscribe };
+}
+
+// ===== scene.js =====
+
+
+
+// All geometry below is SVG space: y points DOWN. Every maths-space y is
+// negated on the way in, once, at the point of use.
+const PIVOT = { x: 235, y: 520 };   // the ramp hinges here
+const RAMP_LEN = 405;
+const BALL_R = 70;                  // FIXED: it sets both contact points
+const CONTACT_D = 250;              // ball contact, measured along the ramp
+const FLAP_UP = 150;
+const FLAP_DOWN = 30;
+const FLAP_HANDLE_R = Math.hypot(BALL_R, FLAP_UP);
+const FLAP_HANDLE_OFF = 180 - Math.atan2(FLAP_UP, BALL_R) / DEG;
+
+function rampDir(th) {
+  return { x: Math.cos(th * DEG), y: -Math.sin(th * DEG) };
+}
+function rampEnd(th) {
+  const d = rampDir(th);
+  return { x: PIVOT.x + RAMP_LEN * d.x, y: PIVOT.y + RAMP_LEN * d.y };
+}
+function ballContact(th) {
+  const d = rampDir(th);
+  return { x: PIVOT.x + CONTACT_D * d.x, y: PIVOT.y + CONTACT_D * d.y };
+}
+function ballCentre(th) {
+  const c = ballContact(th);
+  return { x: c.x - BALL_R * Math.sin(th * DEG), y: c.y - BALL_R * Math.cos(th * DEG) };
+}
+function flapContact(th, al) {
+  const o = ballCentre(th);
+  return { x: o.x - BALL_R * Math.cos(al * DEG), y: o.y + BALL_R * Math.sin(al * DEG) };
+}
+function flapDir(al) {                 // along the flap, pointing up
+  return { x: -Math.sin(al * DEG), y: -Math.cos(al * DEG) };
+}
+// Rides a circle of radius FLAP_HANDLE_R about the ball's centre, at angle
+// al + FLAP_HANDLE_OFF -- which is what lets Task 6 read al off the pointer.
+function flapHandle(th, al) {
+  const o = ballCentre(th);
+  const psi = (al + FLAP_HANDLE_OFF) * DEG;
+  return { x: o.x + FLAP_HANDLE_R * Math.cos(psi), y: o.y - FLAP_HANDLE_R * Math.sin(psi) };
+}
+
+function createScene(svg, { setRamp, setFlap }) {
+  const C_A = COLORS.t1, C_B = COLORS.t2, INK = COLORS.ink;
+  const drawRoot = el('g', {}, svg);
+  const handleRoot = el('g', {}, svg);
+
+  // Shifts a text node back inside the viewBox if its rendered extent (glyphs,
+  // not just its anchor point) would otherwise poke out -- e.g. a large force
+  // number under text-anchor="end" near the left edge. Nudging keeps the value
+  // legible; a clipPath would silently cut it off instead. Only works once the
+  // node is in the document, which text() guarantees by appending before return.
+  function nudgeInside(node) {
+    const M = 4, VW = 660, VH = 600;
+    const b = node.getBBox();
+    let dx = 0, dy = 0;
+    if (b.x < M) dx = M - b.x;
+    else if (b.x + b.width > VW - M) dx = (VW - M) - (b.x + b.width);
+    if (b.y < M) dy = M - b.y;
+    else if (b.y + b.height > VH - M) dy = (VH - M) - (b.y + b.height);
+    if (dx || dy) {
+      node.setAttribute('x', Number(node.getAttribute('x')) + dx);
+      node.setAttribute('y', Number(node.getAttribute('y')) + dy);
+    }
+  }
+
+  const handles = {};
+  for (const [key, color] of [['ramp', INK], ['flap', C_A]]) {
+    const g = el('g', {
+      class: 'handle', tabindex: '0', role: 'slider', 'data-scene': key
+    }, handleRoot);
+    el('circle', { class: 'hit', r: 22, fill: 'transparent' }, g);
+    el('circle', { r: 8, fill: '#fff', stroke: color, 'stroke-width': 3 }, g);
+    handles[key] = g;
+  }
+
+  function render(s) {
+    clear(drawRoot);
+    const end = rampEnd(s.th);
+    const cb  = ballContact(s.th);
+    const o   = ballCentre(s.th);
+    const ca  = flapContact(s.th, s.al);
+    const fd  = flapDir(s.al);
+
+    // horizontal reference the ramp angle is measured from
+    el('line', { x1: PIVOT.x - 20, y1: PIVOT.y, x2: PIVOT.x + 340, y2: PIVOT.y,
+                 stroke: '#c9ccd2', 'stroke-width': 1, 'stroke-dasharray': '5 4' }, drawRoot);
+
+    // the ramp, a wedge like the reference figure
+    el('polygon', {
+      points: `${PIVOT.x},${PIVOT.y} ${end.x},${end.y} ${end.x},${PIVOT.y}`,
+      fill: '#ddd8c4', stroke: '#b9b298', 'stroke-width': 1.5
+    }, drawRoot);
+
+    // ramp angle arc, drawn on top of the wedge so it stays legible
+    const ar = 96;
+    el('path', {
+      d: `M ${PIVOT.x + ar} ${PIVOT.y} A ${ar} ${ar} 0 0 0 ` +
+         `${PIVOT.x + ar * Math.cos(s.th * DEG)} ${PIVOT.y - ar * Math.sin(s.th * DEG)}`,
+      fill: 'none', stroke: INK, 'stroke-width': 1.5, opacity: .8
+    }, drawRoot);
+    nudgeInside(text(drawRoot,
+      PIVOT.x + (ar + 18) * Math.cos(s.th / 2 * DEG),
+      PIVOT.y - (ar + 18) * Math.sin(s.th / 2 * DEG) + 4,
+      `θ = ${s.th.toFixed(1)}°`, { fill: INK, weight: 600 }));
+
+    // the flap: a plank tangent to the ball, mount at its top end
+    const top = { x: ca.x + FLAP_UP * fd.x,   y: ca.y + FLAP_UP * fd.y };
+    const bot = { x: ca.x - FLAP_DOWN * fd.x, y: ca.y - FLAP_DOWN * fd.y };
+    el('line', { x1: bot.x, y1: bot.y, x2: top.x, y2: top.y, stroke: C_A,
+                 'stroke-width': 10, 'stroke-linecap': 'round', opacity: .35 }, drawRoot);
+    el('line', { x1: bot.x, y1: bot.y, x2: top.x, y2: top.y, stroke: C_A,
+                 'stroke-width': 3 }, drawRoot);
+    el('rect', { x: top.x - 17, y: top.y - 5, width: 34, height: 10, rx: 2,
+                 fill: '#d7dae0', stroke: INK, 'stroke-width': 1.2,
+                 transform: `rotate(${-s.al} ${top.x} ${top.y})` }, drawRoot);
+
+    // the ball
+    el('circle', { cx: o.x, cy: o.y, r: BALL_R, fill: '#9cc3e8',
+                   stroke: INK, 'stroke-width': 2 }, drawRoot);
+    text(drawRoot, o.x, o.y + 5, `${Math.round(s.W)} N`,
+         { anchor: 'middle', fill: INK, weight: 600 });
+
+    // contact markers, lettered to match the reference figure
+    el('circle', { cx: ca.x, cy: ca.y, r: 4.5, fill: C_A }, drawRoot);
+    nudgeInside(text(drawRoot, ca.x - 13, ca.y - 12, 'A',
+         { fill: C_A, weight: 700, anchor: 'end', size: 16 }));
+    el('circle', { cx: cb.x, cy: cb.y, r: 4.5, fill: C_B }, drawRoot);
+    nudgeInside(text(drawRoot, cb.x + 13, cb.y + 22, 'B', { fill: C_B, weight: 700, size: 16 }));
+
+    nudgeInside(text(drawRoot, ca.x - 15, ca.y + 16, `N_A = ${Math.round(s.NA)} N`,
+         { fill: C_A, weight: 600, anchor: 'end' }));
+    nudgeInside(text(drawRoot, cb.x + 13, cb.y + 44, `N_B = ${Math.round(s.NB)} N`,
+         { fill: C_B, weight: 600 }));
+
+    // handle positions and ARIA, updated in place so focus survives a render
+    const pos  = { ramp: end, flap: flapHandle(s.th, s.al) };
+    const meta = {
+      ramp: [s.th, RAMP_MIN, RAMP_MAX, 'Ramp angle above horizontal',
+             `${s.th.toFixed(1)} degrees`],
+      flap: [s.al, Math.round(s.th - 80), 85, 'Flap angle',
+             `${s.al.toFixed(1)} degrees, flap force ${Math.round(s.NA)} newtons`]
+    };
+    for (const key of ['ramp', 'flap']) {
+      const g = handles[key], p = pos[key], m = meta[key];
+      for (const c of g.querySelectorAll('circle')) {
+        c.setAttribute('cx', p.x);
+        c.setAttribute('cy', p.y);
+      }
+      g.setAttribute('aria-label', m[3]);
+      g.setAttribute('aria-valuemin', m[1]);
+      g.setAttribute('aria-valuemax', m[2]);
+      g.setAttribute('aria-valuenow', m[0].toFixed(1));
+      g.setAttribute('aria-valuetext', m[4]);
+    }
+  }
+
+  let dragging = null, dragPointerId = null;
+  let latest = null;
+  const origRender = render;
+  function renderTracking(s) { latest = s; origRender(s); }
+
+  function angleFor(key, p) {
+    if (key === 'ramp') {
+      return Math.atan2(PIVOT.y - p.y, p.x - PIVOT.x) / DEG;
+    }
+    const o = ballCentre(latest.th);
+    const raw = Math.atan2(o.y - p.y, p.x - o.x) / DEG;   // (-180, 180]
+    // The flap window needs psi up to al + 115 = 200 degrees, past atan2's cut.
+    // Pick the representative of `raw` nearest the current angle so a drag that
+    // crosses 180 continues smoothly instead of wrapping to the window minimum.
+    const cur = latest.al + FLAP_HANDLE_OFF;
+    const psi = raw + 360 * Math.round((cur - raw) / 360);
+    return psi - FLAP_HANDLE_OFF;
+  }
+
+  svg.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;                 // right/middle click must not drag
+    const g = e.target.closest('[data-scene]');
+    if (!g) return;
+    dragging = g.getAttribute('data-scene');
+    dragPointerId = e.pointerId;
+    g.focus();
+    // A throw here would leave the drag live but uncaptured, so a pointerup
+    // outside the svg would never end it.
+    try { svg.setPointerCapture(e.pointerId); } catch {}
+    e.preventDefault();
+  });
+
+  svg.addEventListener('pointermove', e => {
+    if (!dragging || !latest || e.pointerId !== dragPointerId) return;
+    const deg = angleFor(dragging, clientToSvg(svg, e.clientX, e.clientY));
+    if (dragging === 'ramp') setRamp(deg); else setFlap(deg);
+  });
+
+  function endDrag(e) {
+    if (!dragging || e.pointerId !== dragPointerId) return;
+    if (svg.hasPointerCapture(e.pointerId)) svg.releasePointerCapture(e.pointerId);
+    dragging = null;
+    dragPointerId = null;
+  }
+  svg.addEventListener('pointerup', endDrag);
+  svg.addEventListener('pointercancel', endDrag);
+
+  handleRoot.addEventListener('keydown', e => {
+    const g = e.target.closest('[data-scene]');
+    if (!g) return;
+    const step = e.shiftKey ? 0.1 : 1;
+    let delta = 0;
+    if (e.key === 'ArrowUp' || e.key === 'ArrowRight') delta = step;
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') delta = -step;
+    else return;
+    e.preventDefault();
+    const now = Number(g.getAttribute('aria-valuenow'));
+    if (g.getAttribute('data-scene') === 'ramp') setRamp(now + delta);
+    else setFlap(now + delta);
+  });
+
+  return { render: renderTracking };
+}
+
+// ===== fbd.js =====
+
+
+
+const FBD_ORIGIN = { x: 330, y: 260 };
+const S = 0.28;                       // px per newton — never changes
+const BOX = { x1: 6, y1: 6, x2: 654, y2: 594 };
+
+// maths coords (y up, origin at the ball's centre) -> viewBox coords (y down)
+function px(x, y) {
+  return { x: FBD_ORIGIN.x + S * x, y: FBD_ORIGIN.y - S * y };
+}
+
+// How far along origin->tip we can travel before leaving the panel. 1 means it fits.
+function exitParam(from, to) {
+  let t = 1;
+  const test = (num, den) => { if (den !== 0) { const v = num / den; if (v >= 0) t = Math.min(t, v); } };
+  if (to.x > BOX.x2) test(BOX.x2 - from.x, to.x - from.x);
+  if (to.x < BOX.x1) test(BOX.x1 - from.x, to.x - from.x);
+  if (to.y > BOX.y2) test(BOX.y2 - from.y, to.y - from.y);
+  if (to.y < BOX.y1) test(BOX.y1 - from.y, to.y - from.y);
+  return t;
+}
+
+function defs(svg) {
+  const d = el('defs', {}, svg);
+  for (const [id, color] of [['t1', COLORS.t1], ['t2', COLORS.t2], ['w', COLORS.w]]) {
+    const m = el('marker', {
+      id: `fbd-arrow-${id}`, viewBox: '0 0 10 10', refX: 8, refY: 5,
+      markerWidth: 6, markerHeight: 6, orient: 'auto-start-reverse'
+    }, d);
+    el('path', { d: 'M 0 0 L 10 5 L 0 10 z', fill: color }, m);
+  }
+}
+
+function createFbd(svg, { setRamp, setFlap, setWeight } = {}) {
+  const C1 = COLORS.t1, C2 = COLORS.t2, CW = COLORS.w, CK = COLORS.ink;
+  let active = null;          // which force's handle is hovered or being dragged
+  defs(svg);
+  const drawRoot = el('g', {}, svg);
+  const handleRoot = el('g', {}, svg);
+
+  const handles = {};
+  for (const [key, color] of [['flap', C1], ['ramp', C2], ['w', CW]]) {
+    const g = el('g', {
+      class: 'handle', tabindex: '0', role: 'slider', 'data-fbd': key
+    }, handleRoot);
+    el('circle', { class: 'hit', r: 22, fill: 'transparent' }, g);
+    el('circle', { r: 7, fill: '#fff', stroke: color, 'stroke-width': 3 }, g);
+    handles[key] = g;
+  }
+
+  // Each arrowhead rides a straight line through Q = (0, W). Defined once and
+  // called from both render and pointermove so the two can never drift.
+  const lineFor = (s, which) =>
+    constraintLine({ W: s.W, th: s.th, al: s.al, which });
+
+  function render(s) {
+    clear(drawRoot);
+
+    // faint axes through the origin
+    el('line', { x1: BOX.x1, y1: FBD_ORIGIN.y, x2: BOX.x2, y2: FBD_ORIGIN.y,
+                 stroke: '#e6e8ec', 'stroke-width': 1 }, drawRoot);
+    el('line', { x1: FBD_ORIGIN.x, y1: BOX.y1, x2: FBD_ORIGIN.x, y2: BOX.y2,
+                 stroke: '#e6e8ec', 'stroke-width': 1 }, drawRoot);
+
+    // Both constraint lines. Each force's arrowhead is confined to its own line,
+    // and both lines meet at Q = (0, W).
+    for (const which of ['flap', 'ramp']) {
+      const line = lineFor(s, which);
+      const xs = [-2200, 2200];
+      const a = px(xs[0], line.slope * xs[0] + line.intercept);
+      const b = px(xs[1], line.slope * xs[1] + line.intercept);
+      // Faint at rest, brighter while this force's handle is hovered or dragged,
+      // so the handle visibly announces which line it rides.
+      const hot = active === which;
+      el('line', { x1: a.x, y1: a.y, x2: b.x, y2: b.y,
+                   stroke: which === 'flap' ? C1 : C2,
+                   'stroke-width': hot ? 2 : 1,
+                   'stroke-dasharray': '4 4', opacity: hot ? 0.95 : 0.3,
+                   'clip-path': 'url(#fbd-clip)' }, drawRoot);
+    }
+
+    // Q: one W-length above the origin, the force triangle's third vertex
+    const q = px(0, s.W);
+    el('circle', { cx: q.x, cy: q.y, r: 4, fill: 'none',
+                   stroke: '#9aa1ab', 'stroke-width': 1.5 }, drawRoot);
+    text(drawRoot, q.x + 10, q.y + 4, 'Q', { fill: '#6b7280', size: 12 });
+
+    const arrows = [
+      { key: 'flap', tip: tipPosition({ N: s.NA, ang: s.al, which: 'flap' }),
+        color: C1, mk: 't1', label: `N_A = ${Math.round(s.NA)} N` },
+      { key: 'ramp', tip: tipPosition({ N: s.NB, ang: s.th, which: 'ramp' }),
+        color: C2, mk: 't2', label: `N_B = ${Math.round(s.NB)} N` },
+      { key: 'w',    tip: { x: 0, y: -s.W },
+        color: CW, mk: 'w',  label: `W = ${Math.round(s.W)} N` }
+    ];
+
+    // This must be a hoisted function declaration, and it must sit BEFORE the
+    // arrows loop below (which calls it). A `const place = (...) =>` placed
+    // after the loop would still be in the temporal dead zone when the loop
+    // tries to call it, and the first render would throw ReferenceError before
+    // anything is ever drawn.
+    function place(key, tipMaths, cutPoint, offScale, valueNow, min, max, label, valueText) {
+      const g = handles[key];
+      const p = offScale ? cutPoint : px(tipMaths.x, tipMaths.y);
+      for (const c of g.querySelectorAll('circle')) {
+        c.setAttribute('cx', p.x); c.setAttribute('cy', p.y);
+      }
+      g.setAttribute('aria-label', label);
+      g.setAttribute('aria-valuemin', min);
+      g.setAttribute('aria-valuemax', max);
+      g.setAttribute('aria-valuenow', valueNow.toFixed(1));
+      // aria-valuenow carries the ANGLE (or weight) even though the label says
+      // "force arrowhead" -- without this a screen reader announces e.g. "Flap
+      // force arrowhead, 35.0", which reads as 35 newtons on a 289 N force.
+      // Mirrors the pattern already used in scene.js.
+      g.setAttribute('aria-valuetext', valueText);
+    }
+
+    for (const a of arrows) {
+      const end = px(a.tip.x, a.tip.y);
+      const t = exitParam(FBD_ORIGIN, end);
+      const cut = { x: FBD_ORIGIN.x + (end.x - FBD_ORIGIN.x) * t,
+                    y: FBD_ORIGIN.y + (end.y - FBD_ORIGIN.y) * t };
+      const offScale = t < 1;
+
+      el('line', {
+        x1: FBD_ORIGIN.x, y1: FBD_ORIGIN.y, x2: cut.x, y2: cut.y,
+        stroke: a.color, 'stroke-width': 3,
+        'marker-end': offScale ? null : `url(#fbd-arrow-${a.mk})`
+      }, drawRoot);
+
+      // Off-scale: chevron at the boundary, value still readable just inside.
+      const ux = (cut.x - FBD_ORIGIN.x), uy = (cut.y - FBD_ORIGIN.y);
+      const len = Math.hypot(ux, uy) || 1;
+      const ang = Math.atan2(uy, ux) * 180 / Math.PI;
+      if (offScale) {
+        el('path', { d: 'M -7 -8 L 3 0 L -7 8', fill: 'none', stroke: a.color,
+                     'stroke-width': 3, 'stroke-linecap': 'round',
+                     transform: `translate(${cut.x} ${cut.y}) rotate(${ang})` }, drawRoot);
+      }
+
+      const meta = {
+        flap: [s.al, s.th - 80, FLAP_MAX, 'Flap force arrowhead',
+               `${s.al.toFixed(1)} degrees, force ${Math.round(s.NA)} newtons`],
+        ramp: [s.th, RAMP_MIN, RAMP_MAX, 'Ramp force arrowhead',
+               `${s.th.toFixed(1)} degrees, force ${Math.round(s.NB)} newtons`],
+        w:    [s.W, WEIGHT_MIN, WEIGHT_MAX, 'Ball weight arrowhead',
+               `${Math.round(s.W)} newtons`]
+      }[a.key];
+      place(a.key, a.tip, cut, offScale, meta[0], meta[1], meta[2], meta[3], meta[4]);
+
+      // The number must stay readable even when the arrowhead is off scale.
+      // Off-scale labels are clamped inside the box and anchored by which edge
+      // they exit, so the text always reads back toward the panel's middle.
+      // On-scale labels are unchanged.
+      const lxRaw = FBD_ORIGIN.x + ux / len * (len - (offScale ? 64 : 10)) + (ux > 0 ? 8 : -8);
+      const ly = FBD_ORIGIN.y + uy / len * (len - (offScale ? 64 : 10)) - 8;
+      const lx = offScale ? Math.min(Math.max(lxRaw, BOX.x1 + 10), BOX.x2 - 10) : lxRaw;
+      const anchor = offScale ? (ux < 0 ? 'start' : 'end') : (ux < 0 ? 'end' : 'start');
+      text(drawRoot, lx, ly, a.label + (offScale ? '  → off scale' : ''),
+           { fill: a.color, weight: 600, anchor });
+    }
+
+    el('circle', { cx: FBD_ORIGIN.x, cy: FBD_ORIGIN.y, r: 7, fill: CK }, drawRoot);
+  }
+
+  let dragging = null;
+  let dragPointerId = null;   // only the pointer that started the drag may move
+                               // or end it (matches the pattern in scene.js).
+  let latest = null;                  // most recent state, for the constraint lines
+  let grabOffset = null;              // true tip minus pointer, in maths coords, at grab time
+                                       // (an off-scale handle sits at the clipped
+                                       // boundary point, not at the true tip, so a bare
+                                       // pointer position must be re-anchored before it is
+                                       // projected onto the constraint line)
+
+  const origRender = render;
+  function renderTracking(s) { latest = s; origRender(s); }
+
+  // Visual feedback: highlight the constraint line belonging to the handle the
+  // pointer is on, and keep it highlighted for the whole drag.
+  function setActive(key) {
+    if (active === key) return;
+    active = key;
+    if (latest) origRender(latest);
+  }
+  svg.addEventListener('pointerover', e => {
+    const g = e.target.closest('[data-fbd]');
+    if (g) setActive(g.getAttribute('data-fbd'));
+  });
+  svg.addEventListener('pointerout', e => {
+    if (dragging) return;
+    const g = e.target.closest('[data-fbd]');
+    if (g) setActive(null);
+  });
+  handleRoot.addEventListener('focusin', e => {
+    const g = e.target.closest('[data-fbd]');
+    if (g) setActive(g.getAttribute('data-fbd'));
+  });
+  handleRoot.addEventListener('focusout', () => { if (!dragging) setActive(null); });
+
+  // viewBox point -> maths coords (origin at the ball's centre, y up)
+  function toMaths(p) {
+    return { x: (p.x - FBD_ORIGIN.x) / S, y: (FBD_ORIGIN.y - p.y) / S };
+  }
+
+  svg.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;   // ignore right/middle click
+    const g = e.target.closest('[data-fbd]');
+    if (!g) return;
+    dragging = g.getAttribute('data-fbd');
+    dragPointerId = e.pointerId;
+    setActive(dragging);
+    g.focus();
+
+    // Record the offset between the true tip (maths coords) and the pointer
+    // (maths coords) at grab time. An off-scale handle is drawn at the clipped
+    // boundary point, not the true tip -- see place() above -- so a bare
+    // pointer position must be re-anchored by this offset before every projection below.
+    if (latest) {
+      const tip = dragging === 'w'
+        ? { x: 0, y: -latest.W }
+        : dragging === 'flap'
+          ? tipPosition({ N: latest.NA, ang: latest.al, which: 'flap' })
+          : tipPosition({ N: latest.NB, ang: latest.th, which: 'ramp' });
+      const pm = toMaths(clientToSvg(svg, e.clientX, e.clientY));
+      grabOffset = { x: tip.x - pm.x, y: tip.y - pm.y };
+    } else {
+      grabOffset = { x: 0, y: 0 };
+    }
+
+    try { svg.setPointerCapture(e.pointerId); } catch {}
+    e.preventDefault();
+  });
+
+  svg.addEventListener('pointermove', e => {
+    if (!dragging || e.pointerId !== dragPointerId || !latest) return;
+    const m = toMaths(clientToSvg(svg, e.clientX, e.clientY));
+    const g = { x: m.x + grabOffset.x, y: m.y + grabOffset.y };
+
+    if (dragging === 'w') {
+      setWeight(-g.y);               // the weight arrow points down, so its tip has y < 0
+      return;
+    }
+    const line = lineFor(latest, dragging);
+    const proj = projectOntoLine(g, line);
+    const deg = angleFromTip({ x: proj.x, y: proj.y, which: dragging });
+    if (dragging === 'flap') setFlap(deg); else setRamp(deg);
+  });
+
+  function endDrag(e) {
+    if (!dragging || e.pointerId !== dragPointerId) return;
+    if (svg.hasPointerCapture(e.pointerId)) svg.releasePointerCapture(e.pointerId);
+    dragging = null;
+    dragPointerId = null;
+    grabOffset = null;
+    // Fall back to whatever still has focus rather than unconditionally dimming
+    // the constraint line -- after a mouse drag the handle is still focused and
+    // still arrow-key adjustable, so its line should stay lit.
+    const stillFocused = document.activeElement && document.activeElement.closest &&
+      document.activeElement.closest('[data-fbd]');
+    setActive(stillFocused ? stillFocused.getAttribute('data-fbd') : null);
+  }
+  svg.addEventListener('pointerup', endDrag);
+  svg.addEventListener('pointercancel', endDrag);
+
+  handleRoot.addEventListener('keydown', e => {
+    const g = e.target.closest('[data-fbd]');
+    if (!g) return;
+    const key = g.getAttribute('data-fbd');
+    const step = (e.shiftKey ? 0.1 : 1) * (key === 'w' ? 10 : 1);
+    let delta = 0;
+    if (e.key === 'ArrowUp' || e.key === 'ArrowRight') delta = step;
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') delta = -step;
+    else return;
+    e.preventDefault();
+    const now = Number(g.getAttribute('aria-valuenow'));
+    if (key === 'w') setWeight(now + delta);
+    else if (key === 'flap') setFlap(now + delta);
+    else setRamp(now + delta);
+  });
+
+  return { render: renderTracking };
+}
+
+// ===== triangle.js =====
+
+
+
+const VB = { w: 480, h: 380 }, PAD = 0.12;
+
+function createTriangle(svg) {
+  const C1 = COLORS.t1, C2 = COLORS.t2, CW = COLORS.w;
+  const defsNode = el('defs', {}, svg);
+  for (const [id, color] of [['t1', C1], ['t2', C2], ['w', CW]]) {
+    const m = el('marker', { id: `tri-arrow-${id}`, viewBox: '0 0 10 10',
+      refX: 8, refY: 5, markerWidth: 6, markerHeight: 6,
+      orient: 'auto-start-reverse' }, defsNode);
+    el('path', { d: 'M 0 0 L 10 5 L 0 10 z', fill: color }, m);
+  }
+  const root = el('g', {}, svg);
+
+  function render(s) {
+    clear(root);
+
+    const B = tipPosition({ N: s.NA, ang: s.al, which: 'flap' });
+    const pts = [{ x: 0, y: 0 }, B, { x: 0, y: s.W }];
+
+    const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const spanX = Math.max(maxX - minX, 1e-6), spanY = Math.max(maxY - minY, 1e-6);
+
+    const k = Math.min(VB.w * (1 - 2 * PAD) / spanX, VB.h * (1 - 2 * PAD) / spanY);
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    const px = (x, y) => ({ x: VB.w / 2 + (x - cx) * k, y: VB.h / 2 - (y - cy) * k });
+
+    const [a, b, c] = pts.map(p => px(p.x, p.y));
+    const sides = [
+      { from: a, to: b, color: C1, mk: 't1', label: `N_A ${Math.round(s.NA)}` },
+      { from: b, to: c, color: C2, mk: 't2', label: `N_B ${Math.round(s.NB)}` },
+      { from: c, to: a, color: CW, mk: 'w',  label: `W ${Math.round(s.W)}` }
+    ];
+
+    // A label positioned by a fixed outward push can still land past the viewBox edge
+    // for a long, thin triangle -- most visibly the W label, which always sits at the
+    // bounding box's minimum-x extreme (A and C both have physics x = 0, and B.x > 0
+    // across the whole angle domain). SVG clips at the viewBox, so an escaping label
+    // isn't just off-canvas, its digits get visibly cut off. Measure after placing and
+    // nudge back inside rather than guess a bigger fixed margin.
+    function nudgeInside(node) {
+      const M = 4;                                  // margin inside the viewBox
+      const bb = node.getBBox();
+      let dx = 0, dy = 0;
+      if (bb.x < M) dx = M - bb.x;
+      else if (bb.x + bb.width > VB.w - M) dx = (VB.w - M) - (bb.x + bb.width);
+      if (bb.y < M) dy = M - bb.y;
+      else if (bb.y + bb.height > VB.h - M) dy = (VB.h - M) - (bb.y + bb.height);
+      if (dx || dy) {
+        node.setAttribute('x', Number(node.getAttribute('x')) + dx);
+        node.setAttribute('y', Number(node.getAttribute('y')) + dy);
+      }
+    }
+
+    for (const sd of sides) {
+      el('line', { x1: sd.from.x, y1: sd.from.y, x2: sd.to.x, y2: sd.to.y,
+                   stroke: sd.color, 'stroke-width': 3,
+                   'marker-end': `url(#tri-arrow-${sd.mk})` }, root);
+      const mx = (sd.from.x + sd.to.x) / 2, my = (sd.from.y + sd.to.y) / 2;
+      // push the label away from the triangle's centre so it never sits on a side
+      const ox = mx - VB.w / 2, oy = my - VB.h / 2;
+      const on = Math.hypot(ox, oy) || 1;
+      const node = text(root, mx + ox / on * 20, my + oy / on * 20 + 4, sd.label,
+           { fill: sd.color, weight: 600, anchor: ox < 0 ? 'end' : 'start' });
+      nudgeInside(node);
+    }
+
+    const caption = text(root, 10, VB.h - 10,
+         `auto-scaled to fit — 100 N ≈ ${Math.round(100 * k)} px`,
+         { fill: '#9aa1ab', size: 11, halo: false });
+    nudgeInside(caption);
+  }
+
+  return { render };
+}
+
+// ===== equations.js =====
+
+
+
+// Every term is computed from the UNROUNDED state and rounded only here, at the
+// moment of display. Rounding the forces first makes the two horizontal terms
+// disagree in the last digit, right beside a printed "= 0".
+function terms(s) {
+  return {
+    na: s.NA.toFixed(1),
+    nb: s.NB.toFixed(1),
+    al: s.al.toFixed(1),
+    th: s.th.toFixed(1),
+    w:  s.W.toFixed(1),
+    fxLeft:  (s.NA * Math.cos(s.al * DEG)).toFixed(1),
+    fxRight: (s.NB * Math.sin(s.th * DEG)).toFixed(1)
+  };
+}
+
+function createEquations(node) {
+  function render(s) {
+    const t = terms(s);
+    const o = COLORS.t1, b = COLORS.t2, g = COLORS.w;
+    // Values are all numbers formatted by toFixed, so there is nothing to escape.
+    node.innerHTML =
+      `<div>&Sigma;F<sub>x</sub>: <span style="color:${o}">${t.na}&middot;cos&nbsp;${t.al}&deg;</span>` +
+      ` &minus; <span style="color:${b}">${t.nb}&middot;sin&nbsp;${t.th}&deg;</span> = 0</div>` +
+      `<div>&Sigma;F<sub>y</sub>: <span style="color:${o}">${t.na}&middot;sin&nbsp;${t.al}&deg;</span>` +
+      ` + <span style="color:${b}">${t.nb}&middot;cos&nbsp;${t.th}&deg;</span>` +
+      ` &minus; <span style="color:${g}">${t.w}</span> = 0</div>` +
+      `<div style="font-size:12px;color:#9aa1ab;font-family:system-ui;line-height:1.5;margin-top:6px">` +
+      `Both horizontal terms equal ${t.fxLeft} N. The sums are exactly zero &mdash; that is what fixes the forces.</div>`;
+  }
+  return { render };
+}
+
+// ===== messages.js =====
+
+
+const PERPENDICULAR_TOL = 0.6;
+const EDGE_TOL = 2;
+
+function messageFor(s) {
+  if (Math.abs(s.al - s.th) < PERPENDICULAR_TOL) {
+    return `The flap is perpendicular to the ramp. This is where it holds the ball ` +
+           `with the least force: N_A is at its minimum, W·sin θ = ` +
+           `${Math.round(s.W * Math.sin(s.th * DEG))} N, and the ramp carries exactly ` +
+           `W·cos θ = ${Math.round(s.W * Math.cos(s.th * DEG))} N. ` +
+           `That is the textbook decomposition.`;
+  }
+  const w = flapWindow(s.th);
+  if (s.al - w.min < EDGE_TOL) {
+    return `The flap is nearly parallel to the slope, so it has almost no grip — ` +
+           `it is pushing ${Math.round(s.NA).toLocaleString('en-US')} N to hold a ` +
+           `${Math.round(s.W)} N ball. Flatten it further and the force runs away ` +
+           `toward infinity.`;
+  }
+  if (FLAP_MAX - s.al < EDGE_TOL) {
+    return `The flap is now doing almost all the work, and the ramp is down to ` +
+           `N_B = ${Math.round(s.NB)} N. It never quite reaches zero: the ball would ` +
+           `only leave the ramp at a flap angle of 90 degrees, which is outside the ` +
+           `range the flap can be set to.`;
+  }
+  return '';
+}
+
+function createMessages(node) {
+  return { render(s) { node.textContent = messageFor(s); } };
+}
+
+// ===== app.js =====
+
+
+
+
+
+
+
+const state = createState();
+
+const els = {
+  scene: document.getElementById('scene-svg'),
+  fbd: document.getElementById('fbd-svg'),
+  triangle: document.getElementById('triangle-svg'),
+  equations: document.getElementById('equations'),
+  messages: document.getElementById('messages'),
+  wRange: document.getElementById('w-range'),
+  wNumber: document.getElementById('w-number')
+};
+
+// Each panel is { render(s) }. They are pushed in by later tasks.
+const panels = [];
+panels.push(createScene(els.scene, {
+  setRamp: deg => state.setRampAngle(deg),
+  setFlap: deg => state.setFlapAngle(deg)
+}));
+panels.push(createFbd(els.fbd, {
+  setRamp: deg => state.setRampAngle(deg),
+  setFlap: deg => state.setFlapAngle(deg),
+  setWeight: n => state.setWeight(n)
+}));
+panels.push(createTriangle(els.triangle));
+panels.push(createEquations(els.equations));
+panels.push(createMessages(els.messages));
+
+function renderAll(s) {
+  for (const p of panels) p.render(s);
+  els.wRange.value = s.W.toFixed(0);
+  // Do not fight the user while they are typing an exact weight into the box.
+  if (document.activeElement !== els.wNumber) els.wNumber.value = s.W.toFixed(0);
+}
+
+els.wRange.addEventListener('input', e => state.setWeight(Number(e.target.value)));
+els.wNumber.addEventListener('input', e => state.setWeight(Number(e.target.value)));
+
+state.subscribe(renderAll);
+renderAll(state.getState());
+
+
+})();
+</script>
+</body>
+</html>
