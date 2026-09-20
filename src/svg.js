@@ -4,10 +4,10 @@ export const NS = 'http://www.w3.org/2000/svg';
 // because build.js concatenates every module into a single scope, so a
 // top-level `const C1` in three files would collide and fail the build.
 export const COLORS = {
-  t1: '#e06c3a',   // rope 1 / T1
-  t2: '#3a86c8',   // rope 2 / T2
-  w:  '#6b7280',   // weight
-  ink: '#111827'   // ring and structure
+  t1: '#e06c3a',   // flap force N_A
+  t2: '#3a86c8',   // ramp force N_B
+  w:  '#6b7280',   // ball weight W
+  ink: '#111827'   // ball, ramp and structure
 };
 
 export function el(name, attrs = {}, parent = null) {
