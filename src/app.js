@@ -1,4 +1,5 @@
 import { createState } from './state.js';
+import { createScene } from './scene.js';
 
 const state = createState();
 
@@ -14,6 +15,7 @@ const els = {
 
 // Each panel is { render(s) }. They are pushed in by later tasks.
 const panels = [];
+panels.push(createScene(els.scene, {}));
 
 function renderAll(s) {
   for (const p of panels) p.render(s);
