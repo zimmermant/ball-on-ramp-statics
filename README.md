@@ -1,5 +1,7 @@
 # A Ball on a Ramp
 
+**[▶ Open the simulation](https://zimmermant.github.io/ball-on-ramp-statics/)**
+
 An interactive sandbox for a three-force equilibrium problem: a ball rests on a ramp that
 rises to the right, held from rolling downhill by a flap pressing on its downhill side. Drag
 the ramp angle or the flap angle and watch the two contact forces resolve live, across four
