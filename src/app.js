@@ -3,6 +3,7 @@ import { createScene } from './scene.js';
 import { createFbd } from './fbd.js';
 import { createTriangle } from './triangle.js';
 import { createEquations } from './equations.js';
+import { createMessages } from './messages.js';
 
 const state = createState();
 
@@ -29,6 +30,7 @@ panels.push(createFbd(els.fbd, {
 }));
 panels.push(createTriangle(els.triangle));
 panels.push(createEquations(els.equations));
+panels.push(createMessages(els.messages));
 
 function renderAll(s) {
   for (const p of panels) p.render(s);
