@@ -20,7 +20,11 @@ panels.push(createScene(els.scene, {
   setRamp: deg => state.setRampAngle(deg),
   setFlap: deg => state.setFlapAngle(deg)
 }));
-panels.push(createFbd(els.fbd, {}));
+panels.push(createFbd(els.fbd, {
+  setRamp: deg => state.setRampAngle(deg),
+  setFlap: deg => state.setFlapAngle(deg),
+  setWeight: n => state.setWeight(n)
+}));
 
 function renderAll(s) {
   for (const p of panels) p.render(s);

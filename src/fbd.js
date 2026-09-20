@@ -33,7 +33,7 @@ function defs(svg) {
   }
 }
 
-export function createFbd(svg, { setAngle, setWeight } = {}) {
+export function createFbd(svg, { setRamp, setFlap, setWeight } = {}) {
   const C1 = COLORS.t1, C2 = COLORS.t2, CW = COLORS.w, CK = COLORS.ink;
   let active = null;          // which force's handle is hovered or being dragged
   defs(svg);
@@ -246,7 +246,8 @@ export function createFbd(svg, { setAngle, setWeight } = {}) {
     }
     const line = lineFor(latest, dragging);
     const proj = projectOntoLine(g, line);
-    setAngle(dragging, angleFromTip({ x: proj.x, y: proj.y, which: dragging }));
+    const deg = angleFromTip({ x: proj.x, y: proj.y, which: dragging });
+    if (dragging === 'flap') setFlap(deg); else setRamp(deg);
   });
 
   function endDrag(e) {
@@ -277,7 +278,8 @@ export function createFbd(svg, { setAngle, setWeight } = {}) {
     e.preventDefault();
     const now = Number(g.getAttribute('aria-valuenow'));
     if (key === 'w') setWeight(now + delta);
-    else setAngle(key, now + delta);
+    else if (key === 'flap') setFlap(now + delta);
+    else setRamp(now + delta);
   });
 
   return { render: renderTracking };
