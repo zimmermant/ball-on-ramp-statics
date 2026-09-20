@@ -90,8 +90,8 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 
 <div class="controls">
   <label for="w-range">Ball weight</label>
-  <input type="range" id="w-range" min="100" max="900" step="5" value="500">
-  <input type="number" id="w-number" min="100" max="900" step="5" value="500">
+  <input type="range" id="w-range" min="100" max="900" step="1" value="500">
+  <input type="number" id="w-number" min="100" max="900" step="1" value="500">
   <span>N</span>
 </div>
 
@@ -124,7 +124,10 @@ const DEG = Math.PI / 180;
 const RAMP_MIN = 5;
 const RAMP_MAX = 85;
 const FLAP_MAX = 85;
-const FLAP_SPAN = 80;          // width of the flap's window, below FLAP_MAX
+const FLAP_SPAN = 80;          // offset of the window's lower edge below the ramp
+                                       // angle th (min = th - FLAP_SPAN). NOT the window's
+                                       // width -- that is FLAP_MAX - (th - FLAP_SPAN), i.e.
+                                       // 165 - th, and it shrinks as the ramp steepens.
 const WEIGHT_MIN = 100;
 const WEIGHT_MAX = 900;
 
@@ -185,6 +188,10 @@ function forceMagnitude({ x, y }) {
 // through Q = (0, W):
 //   flap:  y + x*cot(th) = W
 //   ramp:  y - x*tan(al) = W
+// A {slope, intercept} pair cannot represent a vertical line, so this blows up
+// as al -> 90 (ramp) or th -> 0 (flap). It is safe only because the clamped
+// domain (RAMP_MIN..RAMP_MAX = 5..85, FLAP_MAX = 85) caps both slopes at
+// tan(85 deg) = cot(5 deg) ~= 11.43 -- steep, but finite.
 function constraintLine({ W, th, al, which }) {
   const slope = which === 'ramp'
     ? Math.tan(al * DEG)
@@ -459,7 +466,7 @@ function createScene(svg, { setRamp, setFlap }) {
     const meta = {
       ramp: [s.th, RAMP_MIN, RAMP_MAX, 'Ramp angle above horizontal',
              `${s.th.toFixed(1)} degrees`],
-      flap: [s.al, Math.round(s.th - 80), 85, 'Flap angle',
+      flap: [s.al, Math.round(flapWindow(s.th).min), FLAP_MAX, 'Flap angle',
              `${s.al.toFixed(1)} degrees, flap force ${Math.round(s.NA)} newtons`]
     };
     for (const key of ['ramp', 'flap']) {
@@ -551,6 +558,14 @@ const BOX = { x1: 6, y1: 6, x2: 654, y2: 594 };
 // maths coords (y up, origin at the ball's centre) -> viewBox coords (y down)
 function px(x, y) {
   return { x: FBD_ORIGIN.x + S * x, y: FBD_ORIGIN.y - S * y };
+}
+
+// viewBox point -> maths coords (origin at the ball's centre, y up). px's exact
+// inverse -- hoisted to module scope (rather than nested inside createFbd) and
+// exported so a test can import the REAL function instead of round-tripping
+// against its own copy, which would stay green even if this lost the y-flip.
+function toMaths(p) {
+  return { x: (p.x - FBD_ORIGIN.x) / S, y: (FBD_ORIGIN.y - p.y) / S };
 }
 
 // How far along origin->tip we can travel before leaving the panel. 1 means it fits.
@@ -684,7 +699,7 @@ function createFbd(svg, { setRamp, setFlap, setWeight } = {}) {
       }
 
       const meta = {
-        flap: [s.al, s.th - 80, FLAP_MAX, 'Flap force arrowhead',
+        flap: [s.al, flapWindow(s.th).min, FLAP_MAX, 'Flap force arrowhead',
                `${s.al.toFixed(1)} degrees, force ${Math.round(s.NA)} newtons`],
         ramp: [s.th, RAMP_MIN, RAMP_MAX, 'Ramp force arrowhead',
                `${s.th.toFixed(1)} degrees, force ${Math.round(s.NB)} newtons`],
@@ -742,11 +757,6 @@ function createFbd(svg, { setRamp, setFlap, setWeight } = {}) {
     if (g) setActive(g.getAttribute('data-fbd'));
   });
   handleRoot.addEventListener('focusout', () => { if (!dragging) setActive(null); });
-
-  // viewBox point -> maths coords (origin at the ball's centre, y up)
-  function toMaths(p) {
-    return { x: (p.x - FBD_ORIGIN.x) / S, y: (FBD_ORIGIN.y - p.y) / S };
-  }
 
   svg.addEventListener('pointerdown', e => {
     if (e.button !== 0) return;   // ignore right/middle click
@@ -831,7 +841,8 @@ function createFbd(svg, { setRamp, setFlap, setWeight } = {}) {
 
 
 
-const VB = { w: 480, h: 380 }, PAD = 0.12;
+const VB = { w: 480, h: 380 };
+const PAD = 0.12;
 
 function createTriangle(svg) {
   const C1 = COLORS.t1, C2 = COLORS.t2, CW = COLORS.w;
@@ -947,15 +958,21 @@ function createEquations(node) {
 // ===== messages.js =====
 
 
-const PERPENDICULAR_TOL = 0.6;
+const PERPENDICULAR_TOL = 0.2;
 const EDGE_TOL = 2;
 
 function messageFor(s) {
   if (Math.abs(s.al - s.th) < PERPENDICULAR_TOL) {
+    // Quote the live forces (s.NA / s.NB), never recompute from W, sin and cos.
+    // N_A is stationary at al = th (its minimum), so blurring by the tolerance
+    // costs it almost nothing. N_B is monotonic in al there -- it has no
+    // interior minimum -- so the same blur can be off by several percent. The
+    // sentence must never be able to disagree with the panels, which always
+    // show s.NA and s.NB.
     return `The flap is perpendicular to the ramp. This is where it holds the ball ` +
            `with the least force: N_A is at its minimum, W·sin θ = ` +
-           `${Math.round(s.W * Math.sin(s.th * DEG))} N, and the ramp carries exactly ` +
-           `W·cos θ = ${Math.round(s.W * Math.cos(s.th * DEG))} N. ` +
+           `${Math.round(s.NA)} N, and the ramp carries ` +
+           `W·cos θ = ${Math.round(s.NB)} N. ` +
            `That is the textbook decomposition.`;
   }
   const w = flapWindow(s.th);

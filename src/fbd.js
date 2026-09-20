@@ -1,5 +1,5 @@
 import { el, clear, text, COLORS, clientToSvg } from './svg.js';
-import { tipPosition, constraintLine, projectOntoLine, angleFromTip,
+import { tipPosition, constraintLine, projectOntoLine, angleFromTip, flapWindow,
          RAMP_MIN, RAMP_MAX, FLAP_MAX, WEIGHT_MIN, WEIGHT_MAX } from './physics.js';
 
 export const FBD_ORIGIN = { x: 330, y: 260 };
@@ -9,6 +9,14 @@ const BOX = { x1: 6, y1: 6, x2: 654, y2: 594 };
 // maths coords (y up, origin at the ball's centre) -> viewBox coords (y down)
 export function px(x, y) {
   return { x: FBD_ORIGIN.x + S * x, y: FBD_ORIGIN.y - S * y };
+}
+
+// viewBox point -> maths coords (origin at the ball's centre, y up). px's exact
+// inverse -- hoisted to module scope (rather than nested inside createFbd) and
+// exported so a test can import the REAL function instead of round-tripping
+// against its own copy, which would stay green even if this lost the y-flip.
+export function toMaths(p) {
+  return { x: (p.x - FBD_ORIGIN.x) / S, y: (FBD_ORIGIN.y - p.y) / S };
 }
 
 // How far along origin->tip we can travel before leaving the panel. 1 means it fits.
@@ -142,7 +150,7 @@ export function createFbd(svg, { setRamp, setFlap, setWeight } = {}) {
       }
 
       const meta = {
-        flap: [s.al, s.th - 80, FLAP_MAX, 'Flap force arrowhead',
+        flap: [s.al, flapWindow(s.th).min, FLAP_MAX, 'Flap force arrowhead',
                `${s.al.toFixed(1)} degrees, force ${Math.round(s.NA)} newtons`],
         ramp: [s.th, RAMP_MIN, RAMP_MAX, 'Ramp force arrowhead',
                `${s.th.toFixed(1)} degrees, force ${Math.round(s.NB)} newtons`],
@@ -200,11 +208,6 @@ export function createFbd(svg, { setRamp, setFlap, setWeight } = {}) {
     if (g) setActive(g.getAttribute('data-fbd'));
   });
   handleRoot.addEventListener('focusout', () => { if (!dragging) setActive(null); });
-
-  // viewBox point -> maths coords (origin at the ball's centre, y up)
-  function toMaths(p) {
-    return { x: (p.x - FBD_ORIGIN.x) / S, y: (FBD_ORIGIN.y - p.y) / S };
-  }
 
   svg.addEventListener('pointerdown', e => {
     if (e.button !== 0) return;   // ignore right/middle click

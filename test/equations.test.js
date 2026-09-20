@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { solve, DEG } from '../src/physics.js';
+import { solve, DEG, flapWindow } from '../src/physics.js';
 import { terms } from '../src/equations.js';
 
 function stateAt(W, th, al) {
@@ -10,7 +10,8 @@ function stateAt(W, th, al) {
 test('the two horizontal terms agree, because they are mathematically equal', () => {
   for (let i = 0; i < 2000; i++) {
     const th = 5 + Math.random() * 80;
-    const al = th - 80 + Math.random() * (85 - (th - 80));
+    const w = flapWindow(th);
+    const al = w.min + Math.random() * (w.max - w.min);
     const s = stateAt(100 + Math.random() * 800, th, al);
     const t = terms(s);
     assert.ok(Math.abs(Number(t.fxLeft) - Number(t.fxRight)) < 1e-9,

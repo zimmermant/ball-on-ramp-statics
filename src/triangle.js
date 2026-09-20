@@ -1,7 +1,8 @@
 import { el, clear, text, COLORS } from './svg.js';
 import { tipPosition } from './physics.js';
 
-export const VB = { w: 480, h: 380 }, PAD = 0.12;
+export const VB = { w: 480, h: 380 };
+export const PAD = 0.12;
 
 export function createTriangle(svg) {
   const C1 = COLORS.t1, C2 = COLORS.t2, CW = COLORS.w;

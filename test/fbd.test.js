@@ -1,10 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FBD_ORIGIN, S, px, exitParam } from '../src/fbd.js';
+import { FBD_ORIGIN, px, exitParam, toMaths } from '../src/fbd.js';
 import { solve, tipPosition, constraintLine, projectOntoLine,
          angleFromTip } from '../src/physics.js';
-
-const toMaths = p => ({ x: (p.x - FBD_ORIGIN.x) / S, y: (FBD_ORIGIN.y - p.y) / S });
 
 test('px and toMaths are exact inverses', () => {
   for (const p of [{ x: 0, y: 0 }, { x: 250, y: -400 }, { x: -1200, y: 900 }]) {

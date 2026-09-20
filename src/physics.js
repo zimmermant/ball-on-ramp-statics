@@ -12,7 +12,10 @@ export const DEG = Math.PI / 180;
 export const RAMP_MIN = 5;
 export const RAMP_MAX = 85;
 export const FLAP_MAX = 85;
-export const FLAP_SPAN = 80;          // width of the flap's window, below FLAP_MAX
+export const FLAP_SPAN = 80;          // offset of the window's lower edge below the ramp
+                                       // angle th (min = th - FLAP_SPAN). NOT the window's
+                                       // width -- that is FLAP_MAX - (th - FLAP_SPAN), i.e.
+                                       // 165 - th, and it shrinks as the ramp steepens.
 export const WEIGHT_MIN = 100;
 export const WEIGHT_MAX = 900;
 
@@ -73,6 +76,10 @@ export function forceMagnitude({ x, y }) {
 // through Q = (0, W):
 //   flap:  y + x*cot(th) = W
 //   ramp:  y - x*tan(al) = W
+// A {slope, intercept} pair cannot represent a vertical line, so this blows up
+// as al -> 90 (ramp) or th -> 0 (flap). It is safe only because the clamped
+// domain (RAMP_MIN..RAMP_MAX = 5..85, FLAP_MAX = 85) caps both slopes at
+// tan(85 deg) = cot(5 deg) ~= 11.43 -- steep, but finite.
 export function constraintLine({ W, th, al, which }) {
   const slope = which === 'ramp'
     ? Math.tan(al * DEG)

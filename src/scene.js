@@ -1,5 +1,5 @@
 import { el, clear, text, COLORS, clientToSvg } from './svg.js';
-import { DEG, RAMP_MIN, RAMP_MAX } from './physics.js';
+import { DEG, RAMP_MIN, RAMP_MAX, FLAP_MAX, flapWindow } from './physics.js';
 
 // All geometry below is SVG space: y points DOWN. Every maths-space y is
 // negated on the way in, once, at the point of use.
@@ -140,7 +140,7 @@ export function createScene(svg, { setRamp, setFlap }) {
     const meta = {
       ramp: [s.th, RAMP_MIN, RAMP_MAX, 'Ramp angle above horizontal',
              `${s.th.toFixed(1)} degrees`],
-      flap: [s.al, Math.round(s.th - 80), 85, 'Flap angle',
+      flap: [s.al, Math.round(flapWindow(s.th).min), FLAP_MAX, 'Flap angle',
              `${s.al.toFixed(1)} degrees, flap force ${Math.round(s.NA)} newtons`]
     };
     for (const key of ['ramp', 'flap']) {
