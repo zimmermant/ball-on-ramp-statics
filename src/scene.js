@@ -238,12 +238,17 @@ export function createScene(svg, { setRamp, setFlap }) {
     if (e.button !== 0) return;                 // right/middle click must not drag
     const g = e.target.closest('[data-scene]');
     if (!g) return;
+    // Only start the drag once capture has actually succeeded. A pointerup
+    // outside the svg only reaches endDrag if capture is held, so latching
+    // the drag before this call could leave it live but uncaptured.
+    try {
+      svg.setPointerCapture(e.pointerId);
+    } catch {
+      return;                 // capture failed: do not start a drag we cannot end
+    }
     dragging = g.getAttribute('data-scene');
     dragPointerId = e.pointerId;
     g.focus();
-    // A throw here would leave the drag live but uncaptured, so a pointerup
-    // outside the svg would never end it.
-    try { svg.setPointerCapture(e.pointerId); } catch {}
     e.preventDefault();
   });
 

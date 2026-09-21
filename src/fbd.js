@@ -213,6 +213,14 @@ export function createFbd(svg, { setRamp, setFlap, setWeight } = {}) {
     if (e.button !== 0) return;   // ignore right/middle click
     const g = e.target.closest('[data-fbd]');
     if (!g) return;
+    // Only start the drag once capture has actually succeeded. A pointerup
+    // outside the svg only reaches endDrag if capture is held, so latching
+    // the drag before this call could leave it live but uncaptured.
+    try {
+      svg.setPointerCapture(e.pointerId);
+    } catch {
+      return;                 // capture failed: do not start a drag we cannot end
+    }
     dragging = g.getAttribute('data-fbd');
     dragPointerId = e.pointerId;
     setActive(dragging);
@@ -234,7 +242,6 @@ export function createFbd(svg, { setRamp, setFlap, setWeight } = {}) {
       grabOffset = { x: 0, y: 0 };
     }
 
-    try { svg.setPointerCapture(e.pointerId); } catch {}
     e.preventDefault();
   });
 
